@@ -12,6 +12,7 @@ __status__ 		= "Prototype"
 
 from scapy.all import *
 import binascii
+import math
 from rc4 import RC4
 
 if len(sys.argv) == 4: # Demand number of fake SSID
@@ -25,7 +26,12 @@ else: # Reading file spliting every '\n'
     exit(-1)
 
 # Découpage du message en n fragment (Attention la fragmentation en bloc de moins de 32 bits ne fonctionne pas)
-fragments = [message[i:i+len(message)//n + 1] for i in range(0, len(message), len(message)//n + 1)]
+frag_len = max(2^int(math.log(len(message)//n, 2)), 32)
+if len(message) - (n - 1) * frag_len > 32 or len(message) - (n - 1) * frag_len < 0:
+    print("Parameter incompatibles")
+    exit(1)
+
+fragments = [message[i:min(i + frag_len, len(message))] for i in range(0, len(message), frag_len)]
 
 #lecture de message chiffré - rdpcap retourne toujours un array, même si la capture contient un seul paquet
 template = rdpcap('arp.cap')[0]
@@ -37,6 +43,7 @@ packets = []
 seed = template.iv+key
 
 for i, fragment in enumerate(fragments):
+    print(fragment)
     # Creation du streamcipher départ pour chaque fragment
     cipher = RC4(seed, streaming=True)
 
