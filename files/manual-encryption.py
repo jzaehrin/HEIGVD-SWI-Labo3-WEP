@@ -44,3 +44,6 @@ arp.icv = struct.unpack('!L', cipher.crypt(icv))[0]
 
 # Ecriture du pcap
 wrpcap('enc.pcap', arp)
+
+sendp(arp, iface="wlp0s20u1")
+
