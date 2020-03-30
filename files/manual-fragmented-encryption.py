@@ -15,25 +15,21 @@ import binascii
 import math
 from rc4 import RC4
 
-if len(sys.argv) == 4: # Demand number of fake SSID
+if len(sys.argv) == 3: # Demand number of fake SSID
     key = binascii.unhexlify(sys.argv[1].replace(":", ""))
-    n = int(sys.argv[2])
-    message = binascii.unhexlify(sys.argv[3].replace(":", ""))
+    message = binascii.unhexlify(sys.argv[2].replace(":", ""))
+    n = len(message) // 35
 else: # Reading file spliting every '\n'
-    print("%s <key> <nb frag> <message>" % sys.argv[0])
+    print("%s <key> <message>" % sys.argv[0])
     print("\tkey has [0-9A-F]{2}((:)?[0-9A-F]{2})*")
     print("\tmessage has [0-9A-F]{2}((:)?[0-9A-F]{2})*")
     exit(-1)
 
 # Découpage du message en n fragment (Attention la fragmentation en bloc de moins de 32 bits ne fonctionne pas)
-frag_len = max(2**math.floor(math.log2(len(message)/(n-1))), 16)
-print(frag_len)
-if len(message) - (n - 1) * frag_len < 0:
-    print("Parameter incompatibles")
-    exit(1)
+frag_len=36
 
-fragments = [message[i * frag_len: (i + 1) * frag_len] for i in range(0, n - 1)]
-fragments.append(message[(n - 1) * frag_len:])
+
+fragments = [message[i * frag_len: min((i + 1) * frag_len, len(message))] for i in range(0, n)]
 
 #lecture de message chiffré - rdpcap retourne toujours un array, même si la capture contient un seul paquet
 template = rdpcap('arp.cap')[0]
@@ -55,15 +51,19 @@ for i, fragment in enumerate(fragments):
     packet.SC += i
 
     # Si ce n'est pas le dernier fragment, set le bit more-fragment
-    if i != (n-1):
+    if i != len(fragments) - 1:
         packet.FCfield |= 0x4
-
+    else:
+        fragment += b'\0' * (frag_len - len(fragment))
+        packet.FCfield &= ~0x4
     # Creation de la checksum du message
-    icv = struct.pack('<L', binascii.crc32(fragment))
+    crc = struct.pack('<L', binascii.crc32(fragment))
     # chiffre le message et le change dans la trame
-    packet.wepdata = cipher.crypt(fragment)
+    cipher = cipher.crypt(fragment + crc)
+    packet.wepdata = cipher[:-4]
     # chiffre l'ICV et le stock dans la trame en int
-    packet.icv = struct.unpack('!L', cipher.crypt(icv))[0]
+    packet.icv = struct.unpack('!L', cipher[-4:])[0]
+    print("icv: %s" % binascii.crc32(fragment))
 
     # Ajout du fragment
     packets.append(packet)
